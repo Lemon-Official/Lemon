@@ -1,5 +1,7 @@
 # Lemon
 
+![Lemon Logo](/Images/lemon.png)
+
 Lemon is a high-level programming language, which can be used for console applications, window applications and operating systems.
 
 Because Lemon is a beginner-friendly language you could and should, teach Lemon in schools.
