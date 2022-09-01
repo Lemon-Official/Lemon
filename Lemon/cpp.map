@@ -1,0 +1,5 @@
+﻿; Lemon Compiler C++ Map File
+; args1 = First Argument
+; argse1 = All Arguments except 1
+entrypoint  = int main() {
+end = }
