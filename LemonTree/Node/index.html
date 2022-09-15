@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <link rel="stylesheet"
+          data-name="vs/editor/editor.main"
+          href="./min/vs/editor/editor.main.css" />
+    <style>
+        html, body { height: 100%; margin: 0; }
+        #container { height: 100%; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="./min/vs/loader.js"></script>
+    <script>
+        require.config({ paths: { 'vs': './min/vs' } });
+    </script>
+    <script src="./min/vs/editor/editor.main.nls.js"></script>
+    <script src="./min/vs/editor/editor.main.js"></script>
+    <script type="module">
+        monaco.languages.register({id: "lemon"});
+
+        let keywords = [ "entrypoint", "end" ]
+
+
+        monaco.editor.defineTheme ('lemon-theme', {
+            base: 'vs-dark',
+            rules: [
+                { token: 'entrypoint', foreground: '#ffd700', fontStyle: 'bold' },
+                { token: 'end', foreground: '#ffd700', fontStyle: 'bold' },
+                { token: 'inc', foreground: '#800080', fontStyle: 'bold' },
+                { token: 'entryend', foreground: '#eec600', fontStyle: 'bold' },
+                { token: 'string', foreground: '#c39178', fontStyle: 'bold' },
+            ],
+            colors: {
+                'editor.foreground': '#FFFFFF',
+                'editor.background': '#1e1e1e',
+                'editorCursor.foreground': '#FFFFFF',
+                'editor.lineHighlightBackground': '#1e1e1e',
+                'editorLineNumber.foreground': '#666666',
+                'editor.selectionBackground': '#3a638c',
+                'editor.inactiveSelectionBackground': '#1e1e1e'
+            }
+        });
+
+        window.editor = monaco.editor.create(document.getElementById('container'), {
+            value: '',
+            language: 'lemon',
+	        theme: 'lemon-theme'
+        });
+        
+        monaco.languages.setMonarchTokensProvider ('lemon', {
+            keywords,
+            tokenizer: {
+                root: [
+                    [ /entrypoint/, {
+                        cases: {
+                            '@keywords': 'entrypoint'
+                        }
+                    }],
+                    [ /end/, {
+                        cases: {
+                            '@keywords': 'end'
+                        }
+                    }],
+                    [ /include/, {
+                        cases: {
+                            '@keywords': 'inc',
+                            '@default': 'inc'
+                        }
+                    }],
+                    [/".*?"/, 'string']
+                ]
+            }
+        });
+        
+        window.editor.getModel().onDidChangeContent((event) => {
+            window.editor.getValue().toString().split("\n").forEach(line => {
+                let a = "" + line.toString();
+                console.log(a);
+
+                if (a.replace(" ", "").startsWith("include")) {
+                    console.log("1");
+                    let toInclude = a.split(" ")[1];
+                    console.log("2");
+                    fetch('/checkinclude', {
+                        method: 'POST', body: {
+                            incl: toInclude
+                        }
+                    })
+                        .then((response) => console.log(response));
+
+                }
+            });
+        });
+
+        monaco.languages.registerCompletionItemProvider("lemon", {
+            provideCompletionItems: (model, position) => {
+                const suggestions = [
+                    {
+                        label: "entrypoint",
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: "entrypoint\n\t\nend"
+                    },
+                    {
+                        label: "end",
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: "end\n"
+                    },
+                    {
+                        label: "include",
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: "include "
+                    },
+                ]
+                
+                return {suggestions: suggestions}
+            }
+        })
+        </script>
+
+</body>
+</html>
