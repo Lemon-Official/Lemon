@@ -11,7 +11,7 @@ namespace LemonTree
         /// <summary>
         /// DONT FORGET TO CHANGE THIS!!!!!!
         /// </summary>
-        public static string LemonInstallationPath = @"C:\Users\pogrammerX\source\repos\Lemon\Lemon\bin\Debug\net5.0";
+        public static string LemonInstallationPath = @"C:\LemonLibs";
 
     }
 }
