@@ -8,8 +8,6 @@ namespace Lemon
 {
     class Program
     {
-        public static string MinGWInstallationPath = "C:\\";
-
         static void Main(string[] args)
         {
             System.Console.Title = "Lemon";
@@ -60,7 +58,8 @@ namespace Lemon
             System.Console.WriteLine("Parsing Lemon...");
 
             LemonParser parser = new LemonParser();
-            string[] cpp = parser.Parse(lines, includes, CPPMapper.LoadMap("cpp.map"));
+            string args1 = "";
+            string[] cpp = parser.Parse(lines, includes, CPPMapper.LoadMap("cpp.map"), out args1);
 
             if(args.ToList().Contains("-op"))
             {
@@ -71,7 +70,7 @@ namespace Lemon
             }
 
             System.Console.WriteLine("Compiling...");
-            CPPCompiler.Compile(cpp, outPath);
+            CPPCompiler.Compile(cpp, outPath, args1);
 
             watch.Stop();
             System.Console.WriteLine("Completed in %seconds% seconds!".Replace("%seconds%", "" + watch.Elapsed.TotalSeconds));
@@ -80,7 +79,7 @@ namespace Lemon
 
     public class CPPCompiler
     {
-        public static void Compile(string[] cpp, string outPath)
+        public static void Compile(string[] cpp, string outPath, string args)
         {
             string tmpPath = @"C:\Users\" + Environment.UserName + @"\AppData\Local\Temp\lemon-compiler-temporary-c++-output.cpp";
             File.WriteAllLines(tmpPath, cpp);
@@ -89,7 +88,7 @@ namespace Lemon
             proc.StartInfo = new ProcessStartInfo()
             {
                 FileName = "cmd.exe",
-                Arguments = "/C g++ " + tmpPath + " -o" + outPath
+                Arguments = "/C g++ " + tmpPath + " -o" + outPath + " " + args
             };
             proc.Start();
             proc.OutputDataReceived += (object sender, DataReceivedEventArgs data) =>
@@ -104,35 +103,39 @@ namespace Lemon
 
     public class LemonParser
     {
-        public string[] Parse(List<string> lines, List<string> includes, CPPMapper mapper)
+        public string[] Parse(List<string> lines, List<string> includes, CPPMapper mapper, out string argsout)
         {
             List<string> asmLines = new();
 
             asmLines.Add("#include <iostream>");
             asmLines.Add("#include <string>");
+            string args1 = "";
 
             foreach (string include in includes)
             {
                 if(include.EndsWith(".clib"))
                 {
-                    Console.PrintError("NaN", 0, "Tried to include a CLIB File, You will need to include the LLIB file.\n" + include);
+                    Console.PrintError("NaN", 0, "Tried to include .clib, this include statement will be ignored.\n" + include);
                     continue;
                 }
 
-                foreach (string str in File.ReadAllLines(AppDomain.CurrentDomain.BaseDirectory + "\\libs\\" + include.Split(" ")[1]))
+                foreach (string str in File.ReadAllLines("C:\\LemonLibs\\" + (include.Split(" ")[1] + "\\library.llib")))
                 {
                     if (str.StartsWith(";")) continue;
                     if(str.StartsWith("CLIB:"))
                     {
-                        System.Console.WriteLine("Including CLIB: " + str.Substring(5) + " [" + AppDomain.CurrentDomain.BaseDirectory + "\\libs\\" + str.Substring(5) + "]");
-                        foreach (string cline in File.ReadAllLines(AppDomain.CurrentDomain.BaseDirectory + "\\libs\\" + str.Substring(5)))
+                        foreach (string cline in File.ReadAllLines("C:\\LemonLibs\\" + include.Split(" ")[1] + "\\" + str.Substring(5)))
                         {
                             asmLines.Add(cline);
                         }
                     }
-                    if(str.StartsWith("CPP_MAP:"))
+                    if (str.StartsWith("CPP_MAP:"))
                     {
                         CPPMapper.AddToMapper(mapper, str.Substring(8).Split(";VALUE=")[0], str.Substring(8).Split(";VALUE=")[1]);
+                    }
+                    if (str.StartsWith("GCC_ARG:"))
+                    {
+                        args1 += "" + str.Substring(("GCC_ARG:").Length);
                     }
                     if (str.StartsWith("INJ:"))
                     {
@@ -151,25 +154,30 @@ namespace Lemon
                 if (argsLine[0] == ' ')
                     argsLine = StringUtil.RemoveWhitespacesUntilFirstNonWhitespace(line);
 
-                List<string> args = argsLine.Split(" ").ToList();
+                List<string> args = StringUtil.RemoveWhitespacesUntilFirstNonWhitespace(line).Split(" ").ToList();
 
+                bool instring = false;
                 for (int i = 0; i < args.Count; i++)
                 {
-                    if (i == 0)
-                        continue;
-
-                    int fiosd = 0;
-                    int liosd = 0;
-                    if(args[i - 1].Contains("\""))
+                    if (instring)
                     {
-                        fiosd = args[i - 1].IndexOf('\"');
-                        liosd = args[i - 1].LastIndexOf('\"');
+                        if(i >= 1)
+                        {
+                            args[i - 1] += " " + args[i];
+                            args.RemoveAt(i);
+                        }
                     }
 
-                    if(fiosd == liosd)
+                    try
                     {
-                        args[i - 1] = args[i - 1] + " " + args[i];
-                    }
+                        if (args[i].FirstOrDefault() == '\"' || args[i].LastOrDefault() == '\"')
+                        {
+                            if(instring)
+                                args[i] += "\"";
+
+                            instring = !instring;
+                        }
+                    }catch(ArgumentOutOfRangeException) { }
                 }
 
                 string mapped = mapper.Map(args[0], args.ToArray(), new ICOData() { File = "NaN", Line = 0 });
@@ -181,6 +189,7 @@ namespace Lemon
                 asmLines.Add(mapped);
             }
 
+            argsout = args1;
             return asmLines.ToArray();
         }
     }
@@ -199,7 +208,12 @@ namespace Lemon
                     s += str[i];
 
                 if (i + 1 < str.Length && str[i + 1] != ' ')
+                {
+                    if(!hasReachedEnd)
+                        s += (str[i].ToString().Replace(" ", ""));
+
                     hasReachedEnd = true;
+                }
 
                 i++;
             }
@@ -243,7 +257,99 @@ namespace Lemon
                     List<string> ars = new List<string>();
                     ars.AddRange(args);
                     ars.Add("");
-                    return result.Replace("args1", ars[1]);
+                    List<string> argse1 = ((string[])args.Clone()).ToList();
+                    argse1.RemoveAt(0);
+
+                    if(argse1.Count != 0)
+                        for (int i = 0; i < argse1.Last().Length; i++)
+                        {
+                            if (i == 0 | i == 1)
+                                continue;
+
+                            if (argse1.Last()[i] == '\"' && argse1.Last()[i - 1] == '\"')
+                                argse1[argse1.IndexOf(argse1.Last())] = argse1.Last().Remove(argse1.Last().Length - 1, 1);
+                        }
+
+                    result = result.Replace("argse1", String.Join(" ", argse1));
+                    switch(argse1.Count)
+                    {
+                        case 1:
+                            result = result.Replace("{1}", args[1]);
+                            break;
+                        case 2:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            break;
+                        case 3:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            break;
+                        case 4:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            result = result.Replace("{4}", args[4]);
+                            break;
+                        case 5:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            result = result.Replace("{4}", args[4]);
+                            result = result.Replace("{5}", args[5]);
+                            break;
+                        case 6:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            result = result.Replace("{4}", args[4]);
+                            result = result.Replace("{5}", args[5]);
+                            result = result.Replace("{6}", args[6]);
+                            break;
+                        case 7:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            result = result.Replace("{4}", args[4]);
+                            result = result.Replace("{5}", args[5]);
+                            result = result.Replace("{6}", args[6]);
+                            result = result.Replace("{7}", args[7]);
+                            break;
+                        case 8:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            result = result.Replace("{4}", args[4]);
+                            result = result.Replace("{5}", args[5]);
+                            result = result.Replace("{6}", args[6]);
+                            result = result.Replace("{7}", args[7]);
+                            result = result.Replace("{8}", args[8]);
+                            break;
+                        case 9:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            result = result.Replace("{4}", args[4]);
+                            result = result.Replace("{5}", args[5]);
+                            result = result.Replace("{6}", args[6]);
+                            result = result.Replace("{7}", args[7]);
+                            result = result.Replace("{8}", args[8]);
+                            result = result.Replace("{9}", args[9]);
+                            break;
+                        case 10:
+                            result = result.Replace("{1}", args[1]);
+                            result = result.Replace("{2}", args[2]);
+                            result = result.Replace("{3}", args[3]);
+                            result = result.Replace("{4}", args[4]);
+                            result = result.Replace("{5}", args[5]);
+                            result = result.Replace("{6}", args[6]);
+                            result = result.Replace("{7}", args[7]);
+                            result = result.Replace("{8}", args[8]);
+                            result = result.Replace("{9}", args[9]);
+                            result = result.Replace("{10}", args[10]);
+                            break;
+                    }
+                    return result;
                 }
 
             }
